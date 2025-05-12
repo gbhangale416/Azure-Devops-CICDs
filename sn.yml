@@ -1,0 +1,122 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+variables:
+- group: coEDW_Analytics_RBAC_lib
+
+name: RBAC_pipeline_$(date:yyyyMMdd)$(rev:.r)
+  
+trigger: none
+
+stages:
+- stage: RBAC_Analytics_Deploy
+
+  jobs:
+  - job: RBAC_Analytics
+    timeoutInMinutes: 240
+
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+
+    - task: Bash@3
+      displayName: 'Bash - Check git branch and target environment policy'
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "Selected branch name: $(Build.SourceBranch)"
+
+          CURRENT_BRANCH_NAME=$(echo "$(Build.SourceBranch)" | sed "s/refs\/heads\///")
+          echo "Current branch name: $CURRENT_BRANCH_NAME"
+          echo "##vso[task.setvariable variable=CURRENT_BRANCH_NAME]$CURRENT_BRANCH_NAME"
+
+          if [[ "$CURRENT_BRANCH_NAME" != "$(MASTER_BRANCH_NAME)" ]]; then
+            echo "Incorrect branch has been selected, can be used only with $(MASTER_BRANCH_NAME) branch"
+            exit 1
+          fi
+          
+          echo "Building $CURRENT_BRANCH_NAME"
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python 3.7'
+      inputs:
+        versionSpec: '3.7' 
+
+    # Updating pip to latest
+    - script: python -m pip install --upgrade pip
+      displayName: 'Upgrade pip'
+
+    - script: az --version
+      displayName: 'Show Azure CLI version'
+
+    - script: az extension add -n azure-devops
+      displayName: 'Install Azure DevOps Extension'
+
+    - script: echo ${AZURE_DEVOPS_CLI_PAT} | az devops login
+      env:
+        AZURE_DEVOPS_CLI_PAT: $(System.AccessToken)
+      displayName: 'Login Azure DevOps Extension'
+
+    - script: az devops configure --defaults organization=$(ORG) project="$(PROJECT)" --use-git-aliases true
+      displayName: 'Set default Azure DevOps organization and project'
+
+    - task: Bash@3
+      displayName: 'Bash - Apply incremental changes to Snowflake'
+      inputs:
+        targetType: 'inline'
+        script: |
+          function run_snowdeploy() {
+            DEPLOY_DB_NAME=$1
+            DEPLY_WH=$2
+            ROOT_FOLDER=$3
+            LAST_SUCC_ID=$4
+            CURRENT_HEAD=$5   
+            BUILD_STARTED_AT=$6
+            REPOSITORY_ID=$7
+
+              echo "with command: python $(PROJECT_FOLDER)/scripts/snowdeploy_rbac.py -f $ROOT_FOLDER -a $(SF_ACCOUNTNAME) -u $(SF_USER) -r $(SF_ROLE) -w $DEPLY_WH -d $DEPLOY_DB_NAME -c $(SF_CHANGE_TABLE) -b $(Build.BuildId) -t $BUILD_STARTED_AT -v -ac -lsi $LAST_SUCC_ID -ch $CURRENT_HEAD -st $(System.AccessToken) -pn $(Build.buildNumber) -bi $(SF_BUILD_INFO_TABLE) -rid $REPOSITORY_ID -br $CURRENT_BRANCH_NAME"
+                                  python $(PROJECT_FOLDER)/scripts/snowdeploy_rbac.py -f $ROOT_FOLDER -a $(SF_ACCOUNTNAME) -u $(SF_USER) -r $(SF_ROLE) -w $DEPLY_WH -d $DEPLOY_DB_NAME -c $(SF_CHANGE_TABLE) -b $(Build.BuildId) -t $BUILD_STARTED_AT -v -ac -lsi $LAST_SUCC_ID -ch $CURRENT_HEAD -st $(System.AccessToken) -pn $(Build.buildNumber) -bi $(SF_BUILD_INFO_TABLE) -rid $REPOSITORY_ID -br $CURRENT_BRANCH_NAME
+              
+          }
+
+          export BUILD_START_TIME=$(date '+%Y%m%d%H%M%S')
+          echo "Build Start Time: $BUILD_START_TIME"
+
+          echo 'Starting bash task'
+          echo "PROJECT_FOLDER $(PROJECT_FOLDER)"
+          
+          INITIAL_COMMIT_ID_GIT=$(git rev-list --all | tail -n 1 )
+          echo "INITIAL_COMMIT_ID: $INITIAL_COMMIT_ID_GIT"
+
+          export LAST_SUCCESSFUL_BUILD_COMMIT=$(az pipelines build list --branch $CURRENT_BRANCH_NAME -o json |jq -r '[.[]|select(.buildNumber|startswith("RBAC_pipeline_"))|select(.result == "succeeded")|{sourceVersion: .sourceVersion}]'|jq -r '.[0] .sourceVersion')
+          echo "LAST_SUCCESSFUL_BUILD_COMMIT: $LAST_SUCCESSFUL_BUILD_COMMIT"
+          if [[ "$LAST_SUCCESSFUL_BUILD_COMMIT" == "null" ]]; then
+            echo "Last successful build commit ID is null, so passing Initial Commit ID from library - $(INITIAL_COMMIT_ID)"
+            LAST_SUCCESSFUL_BUILD_COMMIT=$(INITIAL_COMMIT_ID) 
+          fi
+          echo "Git commit number from the last successful build off of branch $CURRENT_BRANCH_NAME: $LAST_SUCCESSFUL_BUILD_COMMIT"
+
+          
+          CURRENT_GIT_BRANCH_HEAD=$(git rev-parse HEAD)
+          echo "Git commit number from the head of branch $CURRENT_BRANCH_NAME: $CURRENT_GIT_BRANCH_HEAD"              
+          
+          
+          pip install --upgrade pip --no-cache-dir
+          python --version
+          echo 'Installing certifi==2020.12.5'
+          pip install certifi==2020.12.5 --no-cache-dir
+          echo 'Installing python Snowflake library'
+          pip install --upgrade snowflake-connector-python --no-cache-dir
+          
+          run_snowdeploy $(DB_NAME)  $(SF_WAREHOUSE)  $(PROJECT_FOLDER)  $LAST_SUCCESSFUL_BUILD_COMMIT  $CURRENT_GIT_BRANCH_HEAD   $BUILD_START_TIME  $(REPO_ID)
+          echo "Deployment done with $(MASTER_BRANCH_NAME) branch..............................."
+
+        failOnStderr: true
+      env:
+        SNOWSQL_PWD: $(SF_PASSWORD) 
+        
