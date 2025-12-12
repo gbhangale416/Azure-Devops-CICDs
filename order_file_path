@@ -1,0 +1,130 @@
+import base64
+import requests
+
+# -------------------------
+# Load order file
+# -------------------------
+def load_order_file(order_file_path):
+    with open(order_file_path, "r") as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+# -------------------------
+# Sorting helper function
+# -------------------------
+def get_sort_key(file_path, order_paths):
+    file_path_lower = file_path.lower()
+    for index, partial in enumerate(order_paths):
+        if partial.lower() in file_path_lower:
+            return index
+    return len(order_paths)   # non-matching files go at bottom
+
+
+def sort_files_by_order(incremental_changes_list, order_file_path):
+    order_paths = load_order_file(order_file_path)
+    sorted_list = sorted(
+        incremental_changes_list,
+        key=lambda fp: get_sort_key(fp, order_paths)
+    )
+    return sorted_list
+
+
+# --------------------------------------------------------
+# MAIN FUNCTION — YOU ALREADY HAVE THIS (IMPROVED VERSION)
+# --------------------------------------------------------
+def get_incremental_changes_list(current_head, last_success_build_id,
+                                 root_directory, access_token,
+                                 repository_id, account_level_file,
+                                 pipeline_name, order_file_path):
+
+    base_url = "https://dev.azure.com/CoreOregonInc/coEDW_Analytics/_apis/git/repositories"
+    repositories_url = f"{base_url}/{repository_id}/diffs/commits"
+
+    authorization = str(base64.b64encode(bytes(':' + access_token, 'ascii')), 'ascii')
+
+    headers = {
+        'Content-type': 'application/json',
+        'Accept': 'application/json, text/javascript',
+        'Authorization': 'Basic ' + authorization
+    }
+
+    incremental_changes_list = []
+    skip = 0
+    batch_size = 100
+
+    while True:
+
+        diff_command_url = (
+            f"{repositories_url}?&$top={batch_size}&$skip={skip}"
+            f"&baseVersion={last_success_build_id}&baseVersionType=commit"
+            f"&targetVersion={current_head}&targetVersionType=commit&api-version=6.0"
+        )
+
+        changes_response = requests.get(diff_command_url, headers=headers)
+        changes_response.raise_for_status()
+        changes = changes_response.json().get("changes", [])
+
+        if len(changes) > 0:
+
+            for change in changes:
+                is_folder = (change['item']).get("isFolder", False)
+                file_path = f"{root_directory}{change['item']['path']}"
+
+                if is_folder:
+                    continue
+
+                # pipeline-specific logic
+                if pipeline_name.startswith("coedw_pipeline_"):
+
+                    if change["changeType"] in ["add", "edit, rename", "rename"] and \
+                       "coEDW/Security/" not in file_path:
+
+                        incremental_changes_list.append(file_path)
+
+                    if "/V_" not in file_path and "/v_" not in file_path and \
+                       "coEDW/Security/" not in file_path:
+
+                        incremental_changes_list.append(file_path)
+
+                else:
+                    # normal case
+                    if change["changeType"] in ["add", "edit, rename", "rename"]:
+                        incremental_changes_list.append(file_path)
+
+                    if "/V_" not in file_path and "/v_" not in file_path:
+                        incremental_changes_list.append(file_path)
+
+        # Stop when fewer items than batch size
+        if len(changes) < batch_size:
+            break
+
+        skip += batch_size
+
+    # -------------------------------
+    # 🔥 Final Step — Sort by order file
+    # -------------------------------
+    final_sorted_list = sort_files_by_order(incremental_changes_list, order_file_path)
+
+    return final_sorted_list
+
+
+# ---------------------------------------------------------------------
+# EXAMPLE USAGE
+# ---------------------------------------------------------------------
+"""
+order_file_path = "order_file.txt"
+
+sorted_results = get_incremental_changes_list(
+    current_head="1234567abcdef",
+    last_success_build_id="abcdef123456",
+    root_directory="/coEDW/",
+    access_token="YOUR_PAT",
+    repository_id="REPO_ID_GUID",
+    account_level_file="0",
+    pipeline_name="coedw_pipeline_xxx",
+    order_file_path=order_file_path
+)
+
+for f in sorted_results:
+    print(f)
+"""
