@@ -17,9 +17,9 @@ object/tabels/DBO
 You already generated `incremental_changes_list` containing **full file paths**, such as:
 
 ```
-coEDW/object/tables/history/table1.sql
-coEDW/code/stage/history/jobA.sql
-coEDW/object/view/work/viewX.sql
+test/object/tables/history/table1.sql
+test/code/stage/history/jobA.sql
+test/object/view/work/viewX.sql
 ...
 ```
 
@@ -86,11 +86,11 @@ object/tabels/DBO
 
 ```
 [
-  "coEDW/object/tabels/history/h1.sql",
-  "coEDW/code/stage/history/stageA.sql",
-  "coEDW/objedt/view/work/view1.sql",
-  "coEDW/object/tabels/DBO/tableDBO.sql",
-  "coEDW/random/other/file.sql"
+  "test/object/tabels/history/h1.sql",
+  "test/code/stage/history/stageA.sql",
+  "test/objedt/view/work/view1.sql",
+  "test/object/tabels/DBO/tableDBO.sql",
+  "test/random/other/file.sql"
 ]
 ```
 
@@ -98,11 +98,11 @@ object/tabels/DBO
 
 ```
 [
-  "coEDW/objedt/view/work/view1.sql",       # matches 1st
-  "coEDW/object/tabels/history/h1.sql",     # matches 2nd
-  "coEDW/code/stage/history/stageA.sql",    # matches 3rd
-  "coEDW/object/tabels/DBO/tableDBO.sql",   # matches 5th
-  "coEDW/random/other/file.sql"             # no match → bottom
+  "test/objedt/view/work/view1.sql",       # matches 1st
+  "test/object/tabels/history/h1.sql",     # matches 2nd
+  "test/code/stage/history/stageA.sql",    # matches 3rd
+  "test/object/tabels/DBO/tableDBO.sql",   # matches 5th
+  "test/random/other/file.sql"             # no match → bottom
 ]
 ```
 
@@ -177,7 +177,7 @@ def get_incremental_changes_list(current_head, last_success_build_id,
                                  repository_id, account_level_file,
                                  pipeline_name, order_file_path):
 
-    base_url = "https://dev.azure.com/CoreOregonInc/coEDW_Analytics/_apis/git/repositories"
+    base_url = "https://dev.azure.com/CoreOregonInc/test_Analytics/_apis/git/repositories"
     repositories_url = f"{base_url}/{repository_id}/diffs/commits"
 
     authorization = str(base64.b64encode(bytes(':' + access_token, 'ascii')), 'ascii')
@@ -214,15 +214,15 @@ def get_incremental_changes_list(current_head, last_success_build_id,
                     continue
 
                 # pipeline-specific logic
-                if pipeline_name.startswith("coedw_pipeline_"):
+                if pipeline_name.startswith("test_pipeline_"):
 
                     if change["changeType"] in ["add", "edit, rename", "rename"] and \
-                       "coEDW/Security/" not in file_path:
+                       "test/Security/" not in file_path:
 
                         incremental_changes_list.append(file_path)
 
                     if "/V_" not in file_path and "/v_" not in file_path and \
-                       "coEDW/Security/" not in file_path:
+                       "test/Security/" not in file_path:
 
                         incremental_changes_list.append(file_path)
 
@@ -257,11 +257,11 @@ order_file_path = "order_file.txt"
 sorted_results = get_incremental_changes_list(
     current_head="1234567abcdef",
     last_success_build_id="abcdef123456",
-    root_directory="/coEDW/",
+    root_directory="/test/",
     access_token="YOUR_PAT",
     repository_id="REPO_ID_GUID",
     account_level_file="0",
-    pipeline_name="coedw_pipeline_xxx",
+    pipeline_name="test_pipeline_xxx",
     order_file_path=order_file_path
 )
 
@@ -287,11 +287,11 @@ object/tabels/DBO
 Final sorted file list will look like:
 
 ```
-/coEDW/objedt/view/work/viewA.sql
-/coEDW/object/tabels/history/h1.sql
-/coEDW/code/stage/history/stage1.sql
-/coEDW/objedt/sequence/DBO/seq1.sql
-/coEDW/object/tabels/DBO/tableX.sql
+/test/objedt/view/work/viewA.sql
+/test/object/tabels/history/h1.sql
+/test/code/stage/history/stage1.sql
+/test/objedt/sequence/DBO/seq1.sql
+/test/object/tabels/DBO/tableX.sql
 (other files...)
 ```
 
