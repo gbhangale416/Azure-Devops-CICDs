@@ -48,6 +48,27 @@ def sort_files_by_order(incremental_changes_list, order_file_path, allnewfiles):
 
     return sorted_scripts
 
+
+def sort_files_by_order(allnewfiles, order_file_path):
+    # Load partial-order list
+    order_paths = load_order_file(order_file_path)
+
+    # Step 1: sort *file paths* by order
+    sorted_paths = sorted(
+        allnewfiles.keys(),
+        key=lambda fp: get_sort_key(fp, order_paths)
+    )
+
+    # Step 2: build final list with script details + incremental index
+    final_list = []
+    for idx, file_path in enumerate(sorted_paths, start=1):
+        script = get_details(file_path, allnewfiles[file_path])
+        script["incremental_index"] = idx
+        final_list.append(script)
+
+    return final_list
+
+
 # --------------------------------------------------------
 # MAIN FUNCTION — YOU ALREADY HAVE THIS (IMPROVED VERSION)
 # --------------------------------------------------------
