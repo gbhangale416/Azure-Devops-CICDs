@@ -29,6 +29,25 @@ def sort_files_by_order(incremental_changes_list, order_file_path):
     return sorted_list
 
 
+
+
+def sort_files_by_order(incremental_changes_list, order_file_path, allnewfiles):
+    order_paths = load_order_file(order_file_path)
+
+    # First: sort file paths by matching orderfile partial paths
+    sorted_paths = sorted(
+        incremental_changes_list,
+        key=lambda fp: get_sort_key(fp, order_paths)
+    )
+
+    # Second: convert each sorted file path into a script dict
+    sorted_scripts = []
+    for file in sorted_paths:
+        script = get_details(file, allnewfiles[file])  # ← added as you requested
+        sorted_scripts.append(script)
+
+    return sorted_scripts
+
 # --------------------------------------------------------
 # MAIN FUNCTION — YOU ALREADY HAVE THIS (IMPROVED VERSION)
 # --------------------------------------------------------
