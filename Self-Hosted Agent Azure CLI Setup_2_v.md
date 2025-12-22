@@ -173,5 +173,3 @@ If you want to go further:
 * Central agent health dashboard
 * Auto-quarantine unhealthy agents
 * Multiple tool capabilities (`AZ`, `TF`, `DBX`, etc.)
-
-Just tell me what you want next.
