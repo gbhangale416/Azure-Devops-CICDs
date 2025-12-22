@@ -84,4 +84,3 @@ steps:
 * **Restart:** After a fresh installation of the CLI, the agent process usually needs to be restarted to "see" the new System Path variables.
 * **Linux/Docker:** If you are running this on **Linux**, you would replace the PowerShell script with a `bash` script using `apt-get install azure-cli`.
 
-**Would you like me to help you convert this into a Dockerfile if you plan on running your agents as containers?**
