@@ -96,3 +96,32 @@ def get_auth_header():
         "Authorization": f"Bearer {get_access_token()}",
         "Content-Type": "application/json"
     }
+
+
+
+- task: AzureCLI@2
+  displayName: Get SP Details
+  inputs:
+    azureSubscription: 'Your-ARM-Service-Connection'
+    scriptType: bash
+    scriptLocation: inlineScript
+    addSpnToEnvironment: true
+    inlineScript: |
+
+      echo "##vso[task.setvariable variable=AZURE_CLIENT_ID]$servicePrincipalId"
+      echo "##vso[task.setvariable variable=AZURE_CLIENT_SECRET]$servicePrincipalKey"
+      echo "##vso[task.setvariable variable=AZURE_TENANT_ID]$tenantId"
+
+
+
+- script: |
+    python -u $(System.DefaultWorkingDirectory)/scripts/archive_azure_devops_git_sql_files.py \
+      --org "$(System.TeamFoundationCollectionUri)" \
+      --project "$(System.TeamProject)"
+  displayName: Run Archive Script
+  env:
+    AZURE_CLIENT_ID: $(AZURE_CLIENT_ID)
+    AZURE_CLIENT_SECRET: $(AZURE_CLIENT_SECRET)
+    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+
+
