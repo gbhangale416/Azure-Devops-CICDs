@@ -1,19 +1,98 @@
-- task: AzureCLI@2
-  displayName: 'Authenticate via ARM Service Connection'
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+- task: UsePythonVersion@0
   inputs:
-    azureSubscription: '<Your Azure Service Connection Name>'
-    scriptType: 'bash'
-    scriptLocation: 'inlineScript'
-    addSpnToEnvironment: true
+    versionSpec: '3.11'
+
+- script: |
+    python -m pip install --upgrade pip
+    pip install requests python-dateutil
+  displayName: Install dependencies
+
+
+- task: AzureCLI@2
+  displayName: Run Python with ARM Service Principal
+  inputs:
+    azureSubscription: 'Your-ARM-Service-Connection'
+    scriptType: bash
+    scriptLocation: inlineScript
+    addSpnToEnvironment: true   # 👈 VERY IMPORTANT
     inlineScript: |
 
-      # Do NOT print secrets
-      echo "Service Principal authenticated successfully."
+      echo "Client ID: $servicePrincipalId"
+      echo "Tenant ID: $tenantId"
 
-      # Get Azure DevOps access token directly (no manual secret handling in Python)
-      ADO_TOKEN=$(az account get-access-token \
-        --resource 499b84ac-1321-427f-aa17-267ca6975798 \
-        --query accessToken -o tsv)
+      export AZURE_CLIENT_ID=$servicePrincipalId
+      export AZURE_CLIENT_SECRET=$servicePrincipalKey
+      export AZURE_TENANT_ID=$tenantId
 
-      # Set as secret pipeline variable
-      echo "##vso[task.setvariable variable=ADO_ACCESS_TOKEN;isSecret=true]$ADO_TOKEN"
+      python archive_script.py \
+        --org your-org \
+        --project your-project \
+        --repo your-repo \
+        --branch main \
+        --source_path /database/snow/Test_A/object/Tables/Stage \
+        --base_path /database/snow/Test_A \
+        --months 6
+
+
+
+import os
+import requests
+from datetime import datetime, timedelta, timezone
+from dateutil import parser
+
+# ================= CONFIGURATION =================
+
+ORG = "your-org"
+PROJECT = "your-project"
+REPO = "your-repo"
+BRANCH = "refs/heads/main"
+
+BASE_PATH = "/database/snow/Test_A"
+SOURCE_PATH = "/database/snow/Test_A/object/Tables/Stage"
+ARCHIVE_BASE_PATH = "/database/snow/Test_A/archive"
+
+DAYS = 10
+API_VERSION = "7.0"
+
+# =================================================
+
+BASE_URL = f"https://dev.azure.com/{ORG}/{PROJECT}/_apis/git/repositories/{REPO}"
+
+# Get Service Principal details from ARM connection
+TENANT_ID = os.environ["AZURE_TENANT_ID"]
+CLIENT_ID = os.environ["AZURE_CLIENT_ID"]
+CLIENT_SECRET = os.environ["AZURE_CLIENT_SECRET"]
+
+cutoff_date = datetime.now(timezone.utc) - timedelta(days=DAYS)
+
+
+# -------------------------------------------------
+# Get Azure DevOps Access Token using ARM SP
+# -------------------------------------------------
+def get_access_token():
+    token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+
+    data = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "grant_type": "client_credentials",
+        "scope": "499b84ac-1321-427f-aa17-267ca6975798/.default"
+    }
+
+    r = requests.post(token_url, data=data)
+    r.raise_for_status()
+    return r.json()["access_token"]
+
+
+def get_auth_header():
+    return {
+        "Authorization": f"Bearer {get_access_token()}",
+        "Content-Type": "application/json"
+    }
